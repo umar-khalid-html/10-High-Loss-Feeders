@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IESCO High Loss Feeders – AMI Progress Monitoring</title>
   <meta name="description" content="Official AMI Operation Center dashboard for High Loss Feeder meter installation, commissioning and data verification – IESCO" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
 /* ============================================================
    IESCO High Loss Feeders – AMI Progress Monitoring
@@ -782,7 +781,8 @@ tr.row-duplicate { background: #fef2f2 !important; }
   .dashboard-header { background: #0a3a5c !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
-  </style>
+</style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -790,6 +790,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
     <div class="spinner"></div>
   </div>
 
+  <!-- ========== HEADER ========== -->
   <header class="dashboard-header">
     <div class="header-inner">
       <div class="header-brand">
@@ -819,6 +820,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
       Configure <code>GOOGLE_SHEET_API_URL</code> in <code>script.js</code> for live data.
     </div>
 
+    <!-- ========== KPI CARDS ========== -->
     <section>
       <h2 class="section-title">Overall Progress Snapshot</h2>
       <div class="kpi-grid">
@@ -861,6 +863,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
       </div>
     </section>
 
+    <!-- ========== FILTERS ========== -->
     <section>
       <div class="filters-panel">
         <div class="filter-group">
@@ -902,6 +905,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
       </div>
     </section>
 
+    <!-- ========== FEEDER-WISE PROGRESS ========== -->
     <section>
       <h2 class="section-title">Feeder-wise Progress (All 10 High Loss Feeders)</h2>
       <div class="card">
@@ -927,6 +931,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
       </div>
     </section>
 
+    <!-- ========== PENDING DATA FROM SUBDIVISIONS ========== -->
     <section>
       <h2 class="section-title">Pending Data from Subdivisions</h2>
       <div class="card pending-highlight">
@@ -954,6 +959,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
       </div>
     </section>
 
+    <!-- ========== VISUAL ANALYTICS ========== -->
     <section>
       <h2 class="section-title">Visual Analytics</h2>
       <div class="charts-grid">
@@ -984,6 +990,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
       </div>
     </section>
 
+    <!-- ========== DETAILED RECORD TABLE ========== -->
     <section>
       <h2 class="section-title">Detailed Record-level Information</h2>
       <div class="card">
@@ -1037,7 +1044,7 @@ tr.row-duplicate { background: #fef2f2 !important; }
 // ============================================================
 // CONFIGURATION – Replace with your Google Apps Script Web App URL
 // ============================================================
-const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbxH1acX6C6l3fHcEZaR_89x0nXoWoll7_JXcvvRI1NkUE2P8dqlEhJ4QEAOaQ3emIIReQ/exec';
+const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwka3mX4nvi8HpIW-5PsJCZSLl05AlY-Zzlqdvy0fOoaRWI4b85ddJ7yPg3_NDjHoCs/exec';
 
 // Auto-refresh interval (ms). Set to 0 to disable.
 const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
@@ -1258,24 +1265,61 @@ function validateRecords(records) {
 }
 
 // ============================================================
-// FILTERS
+// FILTERS (cascading + apply to whole dashboard)
 // ============================================================
 function populateFilterDropdowns() {
-  const divisions = [...new Set(allRecords.map(r => r.division).filter(Boolean))].sort();
-  const subDivs   = [...new Set(allRecords.map(r => r.subDivision).filter(Boolean))].sort();
-  const feederNames = [...new Set([
-    ...feeders.map(f => f.feeder),
-    ...allRecords.map(r => r.feeder)
-  ].filter(Boolean))].sort();
-
-  fillSelect('filterDivision', divisions);
-  fillSelect('filterSubDivision', subDivs);
-  fillSelect('filterFeeder', feederNames);
+  rebuildCascadingDropdowns(true);
 }
 
-function fillSelect(id, items) {
+/** Rebuild Division / Sub Division / Feeder lists based on current selection */
+function rebuildCascadingDropdowns(preserveSelection) {
+  const divSel = document.getElementById('filterDivision');
+  const subSel = document.getElementById('filterSubDivision');
+  const fedSel = document.getElementById('filterFeeder');
+
+  const curDiv = preserveSelection ? divSel.value : '';
+  const curSub = preserveSelection ? subSel.value : '';
+  const curFed = preserveSelection ? fedSel.value : '';
+
+  // Master list for cascade (prefer Feeder_Master, fall back to records)
+  const master = feeders.length ? feeders : [];
+  const fromRecords = allRecords.map(r => ({
+    division: r.division,
+    subDivision: r.subDivision,
+    feeder: r.feeder
+  }));
+  const pool = [...master, ...fromRecords].filter(x => x.division || x.feeder);
+
+  const divisions = [...new Set(pool.map(x => x.division).filter(Boolean))].sort();
+  fillSelect('filterDivision', divisions, curDiv);
+
+  const divNow = divSel.value;
+  const subPool = pool.filter(x => !divNow || x.division === divNow);
+  const subDivs = [...new Set(subPool.map(x => x.subDivision).filter(Boolean))].sort();
+  fillSelect('filterSubDivision', subDivs, curSub);
+
+  const subNow = subSel.value;
+  const fedPool = pool.filter(x =>
+    (!divNow || x.division === divNow) &&
+    (!subNow || x.subDivision === subNow)
+  );
+  const feederNames = [...new Set([
+    ...fedPool.map(x => x.feeder),
+    ...feeders.map(f => f.feeder)
+  ].filter(Boolean))].filter(f => {
+    if (!divNow && !subNow) return true;
+    const m = feeders.find(x => x.feeder === f);
+    if (!m) return fedPool.some(x => x.feeder === f);
+    if (divNow && m.division !== divNow) return false;
+    if (subNow && m.subDivision !== subNow) return false;
+    return true;
+  }).sort();
+  fillSelect('filterFeeder', feederNames, curFed);
+}
+
+function fillSelect(id, items, preferred) {
   const sel = document.getElementById(id);
-  const current = sel.value;
+  const current = preferred !== undefined ? preferred : sel.value;
   sel.innerHTML = '<option value="">All</option>';
   items.forEach(v => {
     const opt = document.createElement('option');
@@ -1283,15 +1327,52 @@ function fillSelect(id, items) {
     opt.textContent = v;
     sel.appendChild(opt);
   });
-  if (items.includes(current)) sel.value = current;
+  if (current && items.includes(current)) sel.value = current;
+  else sel.value = '';
 }
 
 function bindFilterEvents() {
-  ['filterDivision', 'filterSubDivision', 'filterFeeder', 'filterStatus'].forEach(id => {
-    document.getElementById(id).addEventListener('change', () => {
-      currentPage = 1;
-      applyFilters();
-    });
+  document.getElementById('filterDivision').addEventListener('change', () => {
+    // Clear lower levels when division changes, then rebuild options
+    document.getElementById('filterSubDivision').value = '';
+    document.getElementById('filterFeeder').value = '';
+    rebuildCascadingDropdowns(true);
+    currentPage = 1;
+    applyFilters();
+  });
+  document.getElementById('filterSubDivision').addEventListener('change', () => {
+    document.getElementById('filterFeeder').value = '';
+    // Auto-set division from subdivision if possible
+    const sub = document.getElementById('filterSubDivision').value;
+    if (sub) {
+      const match = feeders.find(f => f.subDivision === sub) ||
+        allRecords.find(r => r.subDivision === sub);
+      if (match && match.division) {
+        document.getElementById('filterDivision').value = match.division;
+      }
+    }
+    rebuildCascadingDropdowns(true);
+    currentPage = 1;
+    applyFilters();
+  });
+  document.getElementById('filterFeeder').addEventListener('change', () => {
+    // Auto-select Division + Sub Division from feeder
+    const fed = document.getElementById('filterFeeder').value;
+    if (fed) {
+      const match = feeders.find(f => f.feeder === fed) ||
+        allRecords.find(r => r.feeder === fed);
+      if (match) {
+        if (match.division) document.getElementById('filterDivision').value = match.division;
+        if (match.subDivision) document.getElementById('filterSubDivision').value = match.subDivision;
+      }
+    }
+    rebuildCascadingDropdowns(true);
+    currentPage = 1;
+    applyFilters();
+  });
+  document.getElementById('filterStatus').addEventListener('change', () => {
+    currentPage = 1;
+    applyFilters();
   });
   document.getElementById('filterDateFrom').addEventListener('change', () => { currentPage = 1; applyFilters(); });
   document.getElementById('filterDateTo').addEventListener('change', () => { currentPage = 1; applyFilters(); });
@@ -1313,6 +1394,7 @@ function resetFilters() {
   document.getElementById('filterDateFrom').value = '';
   document.getElementById('filterDateTo').value = '';
   document.getElementById('searchInput').value = '';
+  rebuildCascadingDropdowns(false);
   currentPage = 1;
   applyFilters();
 }
@@ -1393,14 +1475,26 @@ function renderAll() {
 }
 
 function renderKPIs() {
-  const totalFeeders = feeders.length;
-  const totalRecords = allRecords.length; // overall, not filtered
-  const completed = allRecords.filter(r => r.dataStatus === 'Completed').length;
-  const pendingData = allRecords.filter(r => r.dataStatus === 'Pending Data').length;
-  const trIdPending = allRecords.filter(r => r.trIdMissing).length;
-  const capPending = allRecords.filter(r => r.capacityMissing).length;
-  const dupRef = allRecords.filter(r => r.refDuplicate === 'Yes').length;
-  const dupMeter = allRecords.filter(r => r.meterDuplicate === 'Yes').length;
+  // KPIs always reflect the active filter selection
+  const src = filteredRecords;
+  const div = document.getElementById('filterDivision').value;
+  const sub = document.getElementById('filterSubDivision').value;
+  const fed = document.getElementById('filterFeeder').value;
+
+  // Count of feeders in scope (master list filtered by cascade)
+  let feedersInScope = feeders;
+  if (fed) feedersInScope = feeders.filter(f => f.feeder === fed);
+  else if (sub) feedersInScope = feeders.filter(f => f.subDivision === sub);
+  else if (div) feedersInScope = feeders.filter(f => f.division === div);
+
+  const totalFeeders = feedersInScope.length || (fed || sub || div ? 1 : feeders.length);
+  const totalRecords = src.length;
+  const completed = src.filter(r => r.dataStatus === 'Completed').length;
+  const pendingData = src.filter(r => r.dataStatus === 'Pending Data').length;
+  const trIdPending = src.filter(r => r.trIdMissing).length;
+  const capPending = src.filter(r => r.capacityMissing).length;
+  const dupRef = src.filter(r => r.refDuplicate === 'Yes').length;
+  const dupMeter = src.filter(r => r.meterDuplicate === 'Yes').length;
   const overallPct = totalRecords ? Math.round((completed / totalRecords) * 100) : 0;
 
   document.getElementById('kpiTotalFeeders').textContent = totalFeeders;
@@ -1418,8 +1512,35 @@ function renderFeederTable() {
   const tbody = document.getElementById('feederTableBody');
   tbody.innerHTML = '';
 
-  feeders.forEach(f => {
-    const rows = allRecords.filter(r => r.feeder === f.feeder);
+  const div = document.getElementById('filterDivision').value;
+  const sub = document.getElementById('filterSubDivision').value;
+  const fed = document.getElementById('filterFeeder').value;
+
+  // Show only feeders matching cascade filters; counts from filteredRecords
+  let list = feeders.slice();
+  if (fed) list = list.filter(f => f.feeder === fed);
+  else if (sub) list = list.filter(f => f.subDivision === sub);
+  else if (div) list = list.filter(f => f.division === div);
+
+  // If filter matches records outside master list, still show them
+  if (list.length === 0 && filteredRecords.length) {
+    const seen = new Set();
+    filteredRecords.forEach(r => {
+      const key = r.feeder;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push({
+        division: r.division,
+        subDivision: r.subDivision,
+        feeder: r.feeder
+      });
+    });
+  }
+
+  if (list.length === 0) list = feeders.slice();
+
+  list.forEach(f => {
+    const rows = filteredRecords.filter(r => r.feeder === f.feeder);
     const total = rows.length;
     const completed = rows.filter(r => r.dataStatus === 'Completed').length;
     const pending = total - completed;
@@ -1453,9 +1574,9 @@ function renderPendingSubdivision() {
   const tbody = document.getElementById('pendingSubTableBody');
   tbody.innerHTML = '';
 
-  // Group by Division + Sub Division + Feeder for pending items
+  // Group by Division + Sub Division + Feeder for pending items (filtered)
   const map = {};
-  allRecords.forEach(r => {
+  filteredRecords.forEach(r => {
     if (r.dataStatus === 'Completed' && !r.trIdMissing && !r.capacityMissing && r.refDuplicate !== 'Yes' && r.meterDuplicate !== 'Yes') return;
     const key = r.division + '|' + r.subDivision + '|' + r.feeder;
     if (!map[key]) {
@@ -1592,10 +1713,30 @@ function renderCharts() {
   renderInstallationTrendChart();
 }
 
+function getScopedFeeders() {
+  const div = document.getElementById('filterDivision').value;
+  const sub = document.getElementById('filterSubDivision').value;
+  const fed = document.getElementById('filterFeeder').value;
+  let list = feeders.slice();
+  if (fed) list = list.filter(f => f.feeder === fed);
+  else if (sub) list = list.filter(f => f.subDivision === sub);
+  else if (div) list = list.filter(f => f.division === div);
+  if (list.length === 0 && filteredRecords.length) {
+    const seen = new Set();
+    filteredRecords.forEach(r => {
+      if (seen.has(r.feeder)) return;
+      seen.add(r.feeder);
+      list.push({ division: r.division, subDivision: r.subDivision, feeder: r.feeder });
+    });
+  }
+  return list.length ? list : feeders.slice();
+}
+
 function renderFeederProgressChart() {
-  const labels = feeders.map(f => f.feeder);
-  const completed = feeders.map(f => allRecords.filter(r => r.feeder === f.feeder && r.dataStatus === 'Completed').length);
-  const pending = feeders.map(f => allRecords.filter(r => r.feeder === f.feeder && r.dataStatus !== 'Completed').length);
+  const scoped = getScopedFeeders();
+  const labels = scoped.map(f => f.feeder);
+  const completed = scoped.map(f => filteredRecords.filter(r => r.feeder === f.feeder && r.dataStatus === 'Completed').length);
+  const pending = scoped.map(f => filteredRecords.filter(r => r.feeder === f.feeder && r.dataStatus !== 'Completed').length);
 
   const ctx = document.getElementById('chartFeederProgress').getContext('2d');
   if (charts.feeder) charts.feeder.destroy();
@@ -1621,19 +1762,13 @@ function renderFeederProgressChart() {
 }
 
 function renderPendingClassificationChart() {
-  const trId = allRecords.filter(r => r.trIdMissing).length;
-  const cap  = allRecords.filter(r => r.capacityMissing && !r.trIdMissing).length; // avoid double count preference
-  const dupR = allRecords.filter(r => r.refDuplicate === 'Yes').length;
-  const dupM = allRecords.filter(r => r.meterDuplicate === 'Yes' && r.refDuplicate !== 'Yes').length;
-  const other = allRecords.filter(r => r.dataStatus === 'Other Issue').length;
-
-  // Simpler exclusive-ish buckets for the donut
+  const src = filteredRecords;
   const data = [
-    allRecords.filter(r => r.trIdMissing).length,
-    allRecords.filter(r => r.capacityMissing).length,
-    allRecords.filter(r => r.refDuplicate === 'Yes').length,
-    allRecords.filter(r => r.meterDuplicate === 'Yes').length,
-    allRecords.filter(r => r.dataStatus === 'Other Issue').length
+    src.filter(r => r.trIdMissing).length,
+    src.filter(r => r.capacityMissing).length,
+    src.filter(r => r.refDuplicate === 'Yes').length,
+    src.filter(r => r.meterDuplicate === 'Yes').length,
+    src.filter(r => r.dataStatus === 'Other Issue').length
   ];
 
   const ctx = document.getElementById('chartPendingClass').getContext('2d');
@@ -1660,9 +1795,13 @@ function renderPendingClassificationChart() {
 }
 
 function renderDivisionProgressChart() {
-  const divisions = [...new Set(feeders.map(f => f.division))];
-  const completed = divisions.map(d => allRecords.filter(r => r.division === d && r.dataStatus === 'Completed').length);
-  const pending = divisions.map(d => allRecords.filter(r => r.division === d && r.dataStatus !== 'Completed').length);
+  const scoped = getScopedFeeders();
+  let divisions = [...new Set(scoped.map(f => f.division))];
+  if (!divisions.length) {
+    divisions = [...new Set(filteredRecords.map(r => r.division).filter(Boolean))];
+  }
+  const completed = divisions.map(d => filteredRecords.filter(r => r.division === d && r.dataStatus === 'Completed').length);
+  const pending = divisions.map(d => filteredRecords.filter(r => r.division === d && r.dataStatus !== 'Completed').length);
 
   const ctx = document.getElementById('chartDivision').getContext('2d');
   if (charts.division) charts.division.destroy();
@@ -1687,7 +1826,7 @@ function renderDivisionProgressChart() {
 
 function renderInstallationTrendChart() {
   const dateMap = {};
-  allRecords.forEach(r => {
+  filteredRecords.forEach(r => {
     const d = r.installationDate || 'Unknown';
     dateMap[d] = (dateMap[d] || 0) + 1;
   });
@@ -1702,10 +1841,10 @@ function renderInstallationTrendChart() {
   charts.trend = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: sorted,
+      labels: sorted.length ? sorted : ['No data'],
       datasets: [{
         label: 'Installations',
-        data: sorted.map(d => dateMap[d]),
+        data: sorted.length ? sorted.map(d => dateMap[d]) : [0],
         borderColor: '#0b3d5c',
         backgroundColor: 'rgba(11, 61, 92, 0.12)',
         fill: true,
@@ -1833,6 +1972,6 @@ function updateLastUpdated(iso) {
   }
 }
 
-  </script>
+</script>
 </body>
 </html>
